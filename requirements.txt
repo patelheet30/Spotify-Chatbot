@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+aiosqlite
+spotipy
+jinja2
+python-dotenv
+python-multipart
+python-aiml
+nltk
+tensorflow
+numpy
+pandas
