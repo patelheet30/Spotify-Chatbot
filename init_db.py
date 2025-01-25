@@ -1,7 +1,6 @@
 import logging
 
 from app.database.database import init_db
-from app.database.models import Base
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
