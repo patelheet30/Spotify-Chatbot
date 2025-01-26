@@ -160,6 +160,48 @@ class CRUDArtist(CRUDBase):
             .all()
         )
 
+    def get_artist_top_tracks(
+        self, db_session: Session, artist_id: int, *, limit: int = 10
+    ) -> List[models.Track]:
+        """Get the top tracks of an artist.
+
+        Args:
+            db_session (Session): SQLAlchemy session object
+            artist_id (int): ID of the artist
+            limit (int, optional): Limit how many records to pull. Defaults to 10.
+
+        Returns:
+            List[models.Track]: List of tracks
+        """
+        return (
+            db_session.query(models.Track)
+            .filter(models.Track.artist_id == artist_id)
+            .order_by(models.Track.popularity.desc())
+            .limit(limit)
+            .all()
+        )
+
+    def get_artist_albums(
+        self, db_session: Session, artist_id: int, *, limit: int = 50
+    ) -> List[models.Album]:
+        """Get the albums of an artist.
+
+        Args:
+            db_session (Session): SQLAlchemy session object
+            artist_id (int): ID of the artist
+            limit (int, optional): List how many records to pull. Defaults to 50.
+
+        Returns:
+            List[models.Album]: List of albums
+        """
+        return (
+            db_session.query(models.Album)
+            .join(models.album_artist)
+            .filter(models.album_artist.c.artist_id == artist_id)
+            .limit(limit)
+            .all()
+        )
+
 
 class CRUDAlbum(CRUDBase):
     """CRUD operations for the Album model.
@@ -303,6 +345,27 @@ class CRUDAlbum(CRUDBase):
             db_session.query(self.model)
             .filter(models.Album.release_date.like(f"{year}%"))
             .offset(skip)
+            .limit(limit)
+            .all()
+        )
+
+    def get_album_tracks(
+        self, db_session: Session, album_id: int, *, limit: int = 50
+    ) -> List[models.Track]:
+        """Get the tracks of an album.
+
+        Args:
+            db_session (Session): SQLAlchemy session object
+            album_id (int): ID of the album
+            limit (int, optional): How many records to pull. Defaults to 50.
+
+        Returns:
+            List[models.Track]: List of tracks
+        """
+        return (
+            db_session.query(models.Track)
+            .filter(models.Track.album_id == album_id)
+            .order_by(models.Track.disc_number, models.Track.track_number)
             .limit(limit)
             .all()
         )
