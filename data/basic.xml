@@ -1,0 +1,161 @@
+<aiml version="1.0.1" encoding="UTF-8">
+    <category>
+        <pattern>HELLO</pattern>
+        <template>Hi! I'm your music chatbot. I can help you learn about your favourite artists, albums etc. What would you like to start with?</template>
+    </category>
+    
+    <category>
+        <pattern>WHO IS *</pattern>
+        <template>Let me find information about <star/>.</template>
+    </category>
+    
+    <category>
+        <pattern>TELL ME ABOUT *</pattern>
+        <template>I'll look up details about <star/>.</template>
+    </category>
+
+    <category>
+        <pattern>WHEN DID * START THEIR CAREER</pattern>
+        <template>I'll check when <star/> began their musical career.</template>
+    </category>
+
+    <category>
+        <pattern>HOW MANY MONTHLY LISTENERS DOES * HAVE</pattern>
+        <template>I'll check the monthly listener count for <star/>.</template>
+    </category>
+
+    <category>
+        <pattern>WHICH ALBUM DID * RELEASE IN *</pattern>
+        <template>I'll check what albums <star index="1"/> released in <star index="2"/>.</template>
+    </category>
+    
+    <category>
+        <pattern>HOW MANY TRACKS DOES * HAVE</pattern>
+        <template>Let me check the track count for <star/>.</template>
+    </category>
+
+    <category>
+        <pattern>WHO RELEASED *</pattern>
+        <template>I'll find out who released <star/>.</template>
+    </category>
+
+    <category>
+        <pattern>WHAT WAS * FIRST ALBUM</pattern>
+        <template>I'll look up <star/>'s first album.</template>
+    </category>
+
+    <category>
+        <pattern>WHAT WAS * LATEST ALBUM</pattern>
+        <template>I'll find <star/>'s most recent album.</template>
+    </category>
+
+    <category>
+        <pattern>WHEN WAS * RELEASED</pattern>
+        <template>I'll check the release date for <star/>.</template>
+    </category>
+
+    <category>
+        <pattern>WHICH YEAR DID * COME OUT</pattern>
+        <template>I'll look up when <star/> was released.</template>
+    </category>
+
+    <category>
+        <pattern>HOW OLD IS THE ALBUM *</pattern>
+        <template>I'll calculate how long ago <star/> was released.</template>
+    </category>
+
+    <category>
+        <pattern>IS * DANCEABLE</pattern>
+        <template>I'll analyze the danceability of <star/>.</template>
+    </category>
+
+    <category>
+        <pattern>WHAT IS THE TEMPO OF *</pattern>
+        <template>I'll check the tempo for <star/>.</template>
+    </category>
+
+    <category>
+        <pattern>HOW ENERGETIC IS *</pattern>
+        <template>I'll look up the energy level of <star/>.</template>
+    </category>
+
+    <category>
+        <pattern>IS * A SAD SONG</pattern>
+        <template>I'll check the valence (musical positiveness) of <star/>.</template>
+    </category>
+
+    <category>
+        <pattern>IS * A HAPPY SONG</pattern>
+        <template>I'll check the valence (musical positiveness) of <star/>.</template>
+    </category>
+
+    <category>
+        <pattern>HOW LOUD IS *</pattern>
+        <template>I'll check the loudness level of <star/>.</template>
+    </category>
+
+    <category>
+        <pattern>WHAT SONGS ARE ON *</pattern>
+        <template>I'll list the tracks from <star/>.</template>
+    </category>
+
+    <category>
+        <pattern>LIST THE TRACKS ON *</pattern>
+        <template>I'll show you all the tracks on <star/>.</template>
+    </category>
+
+    <category>
+        <pattern>WHAT IS THE LONGEST SONG ON *</pattern>
+        <template>I'll find the longest track on <star/>.</template>
+    </category>
+
+    <category>
+        <pattern>WHAT IS THE SHORTEST SONG ON *</pattern>
+        <template>I'll find the shortest track on <star/>.</template>
+    </category>
+
+    <category>
+        <pattern>WHAT GENRE IS *</pattern>
+        <template>I'll check the genre classification for <star/>.</template>
+    </category>
+
+    <category>
+        <pattern>WHAT GENRES DOES * MAKE</pattern>
+        <template>I'll look up the genres associated with <star/>.</template>
+    </category>
+
+    <category>
+        <pattern>HOW LONG IS *</pattern>
+        <template>I'll check the duration of <star/>.</template>
+    </category>
+
+    <category>
+        <pattern>WHO WROTE *</pattern>
+        <template>I'll look up the songwriting credits for <star/>.</template>
+    </category>
+
+    <category>
+        <pattern>WHO PRODUCED *</pattern>
+        <template>I'll check who produced <star/>.</template>
+    </category>
+
+    <category>
+        <pattern>IS * EXPLICIT</pattern>
+        <template>I'll check if <star/> has explicit content.</template>
+    </category>
+
+    <category>
+        <pattern>WHO IS FEATURED ON *</pattern>
+        <template>I'll check for featured artists on <star/>.</template>
+    </category>
+
+    <category>
+        <pattern>HAVE * AND * WORKED TOGETHER</pattern>
+        <template>I'll look for collaborations between <star index="1"/> and <star index="2"/>.</template>
+    </category>
+
+    <category>
+        <pattern>*</pattern>
+        <template>I'll try to find relevant music information about: <star/></template>
+    </category>
+</aiml>
