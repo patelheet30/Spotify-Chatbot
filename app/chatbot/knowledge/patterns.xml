@@ -1,0 +1,74 @@
+<aiml version="1.0" encoding="UTF-8">
+    <!-- Basic greetings -->
+    <category>
+        <pattern>HELLO</pattern>
+        <template>Hi! I'm your music chatbot. I can help you learn about your favourite artists,
+            albums etc. What would you like to start with?</template>
+    </category>
+
+    <category>
+        <pattern>HI</pattern>
+        <template>Hi! I'm your music chatbot. I can help you learn about your favourite artists,
+            albums etc. What would you like to start with?</template>
+    </category>
+
+    <!-- Artist information -->
+    <category> <!-- todo: Fix tracks-->
+        <pattern>WHO IS *</pattern>
+        <template>Let me find information about <star /></template>
+    </category>
+
+    <category>
+        <pattern>TELL ME ABOUT *</pattern>
+        <template>Let me find information about <star /></template>
+    </category>
+
+    <!-- Album queries -->
+    <category>
+        <pattern>HOW MANY TRACKS DOES * HAVE</pattern>
+        <template>Let me check the track count for <star /> album</template>
+    </category>
+
+    <category>
+        <pattern>HOW MANY TRACKS DOES THE * ALBUM HAVE</pattern>
+        <template>Let me check the track count for <star /> album</template>
+    </category>
+
+    <category>
+        <pattern>WHICH ALBUM DID * RELEASE IN *</pattern>
+        <template>I'll check what albums <star index="1" /> released in <star index="2" /></template>
+    </category>
+
+    <!-- Track listing queries -->
+    <category>
+        <pattern>WHAT SONGS ARE ON *</pattern>
+        <template>I'll list the tracks from <star /></template>
+    </category>
+
+    <category>
+        <pattern>WHICH SONGS ARE ON *</pattern>
+        <template>I'll list the tracks from <star /></template>
+    </category>
+
+    <category>
+        <pattern>LIST THE TRACKS ON *</pattern>
+        <template>I'll list the tracks from <star /></template>
+    </category>
+
+    <category>
+        <pattern>WHAT TRACKS ARE ON *</pattern>
+        <template>I'll list the tracks from <star /></template>
+    </category>
+
+    <!-- Track duration queries -->
+    <category>
+        <pattern>HOW LONG IS *</pattern>
+        <template>I'll check the duration of <star /></template>
+    </category>
+
+    <!-- Default response -->
+    <category>
+        <pattern>*</pattern>
+        <template>#30$ <star /></template>
+    </category>
+</aiml>

@@ -41,12 +41,69 @@ class SpotifyAPI:
         artist_data = self.spotify.artist(artist_id)
         self.cache.set(cache_key, artist_data)
 
-        return crud.artist.get_by_spotify_id(
+        artist = crud.artist.get_by_spotify_id(
             db_session, artist_id
         ) or self._create_artist(
             db_session,
             artist_data,  # type: ignore
         )
+
+        albums = await self.get_artist_albums(artist_id, db_session)
+
+        for album in albums:
+            await self.get_album_tracks(album.spotify_id, db_session)  # type: ignore
+
+        return artist
+
+    async def get_artist_albums(
+        self, artist_id: str, db_session: Session
+    ) -> List[models.Album]:
+        """Get all albums by an artist from Spotify API.
+
+        Args:
+            artist_id (str): The artist ID
+            db_session (Session): SQLAlchemy session object
+
+        Returns:
+            List[models.Album]: The list of album model instances.
+        """
+        cache_key = f"artist_albums_{artist_id}"
+
+        if cached_data := self.cache.get(cache_key):
+            albums = []
+            for album_data in cached_data:
+                album = crud.album.get_by_spotify_id(
+                    db_session, album_data["id"]
+                ) or self._create_album(db_session, album_data)
+                albums.append(album)
+
+            return albums
+
+        albums_data = []
+        for album_type in ["album", "single", "compilation"]:
+            results = self.spotify.artist_albums(
+                artist_id,
+                album_type=album_type,
+                limit=50,
+            )
+
+            albums_data.extend(results["items"])  # type: ignore
+
+            while results["next"]:  # type: ignore
+                results = self.spotify.next(results)
+                albums_data.extend(results["items"])  # type: ignore
+
+        self.cache.set(cache_key, albums_data)
+
+        albums = []
+        for album_data in albums_data:
+            full_album_data = self.spotify.album(album_data["id"])
+            album = crud.album.get_by_spotify_id(
+                db_session, album_data["id"]
+            ) or self._create_album(db_session, full_album_data)  # type: ignore
+            albums.append(album)
+
+        return albums
 
     async def get_album_data(self, album_id: str, db_session: Session) -> models.Album:
         """Get album data from Spotify API.
@@ -73,6 +130,71 @@ class SpotifyAPI:
             album_data,  # type: ignore
         )
 
+    async def get_album_tracks(
+        self, album_id: str, db_session: Session
+    ) -> List[models.Track]:
+        cache_key = f"album_tracks_{album_id}"
+
+        if cached_data := self.cache.get(cache_key):
+            tracks = []
+            for track_data in cached_data:
+                try:
+                    full_track_data = self.spotify.track(track_data["id"])
+                    track = crud.track.get_by_spotify_id(
+                        db_session, track_data["id"]
+                    ) or self._create_track(
+                        db_session,
+                        full_track_data,  # type: ignore
+                        full_track_data["artists"][0]["id"],  # type: ignore
+                        album_id,  # type: ignore
+                    )
+
+                    tracks.append(track)
+                except Exception as e:
+                    print(
+                        f"Warning: Could not process track {track_data.get('id', 'Unknown ID')}: {str(e)}"
+                    )
+                    continue
+
+            return tracks
+
+        try:
+            results = self.spotify.album_tracks(album_id)
+            tracks_data = results["items"]  # type: ignore
+
+            while results["next"]:  # type: ignore
+                results = self.spotify.next(results)
+                tracks_data.extend(results["items"])  # type: ignore
+
+            self.cache.set(cache_key, tracks_data)
+
+            tracks = []
+            for track_data in tracks_data:
+                try:
+                    full_track_data = self.spotify.track(track_data["id"])
+
+                    track = crud.track.get_by_spotify_id(
+                        db_session, track_data["id"]
+                    ) or self._create_track(
+                        db_session,
+                        full_track_data,  # type: ignore
+                        full_track_data["artists"][0]["id"],  # type: ignore
+                        album_id,  # type: ignore
+                    )
+
+                    tracks.append(track)
+                except Exception as e:
+                    print(
+                        f"Warning: Could not process track {track_data.get('id', 'Unknown ID')}: {str(e)}"
+                    )
+                    continue
+
+            return tracks
+
+        except Exception as e:
+            print(f"Error fetching tracks for album {album_id}: {str(e)}")
+            return []
+
     async def get_track_data(self, track_id: str, db_session: Session) -> models.Track:
         """Get track data from Spotify API.
 
@@ -91,11 +213,9 @@ class SpotifyAPI:
             ) or self._create_track(db_session, cached_data)  # type: ignore
 
         track_data = self.spotify.track(track_id)
-        audio_features = self.spotify.audio_features([track_id])[0]  # type: ignore
 
         full_track_data = {
             **track_data,  # type: ignore
-            "audio_features": audio_features,
         }
         self.cache.set(cache_key, full_track_data)
 
@@ -110,9 +230,6 @@ class SpotifyAPI:
             artist.id,  # type: ignore
             album.id,  # type: ignore
         )
-
-        if audio_features:
-            self._create_audio_features(db_session, track.id, audio_features)  # type: ignore
 
         return track
 
@@ -167,7 +284,7 @@ class SpotifyAPI:
             "image_url": album_data["images"][0]["url"]
             if album_data["images"]
             else None,
-            "popularity": album_data.get("popularity"),
+            "popularity": album_data.get("popularity", 0),
             "label": album_data.get("label"),
         }
 
@@ -240,7 +357,9 @@ class SpotifyAPI:
         }
         return crud.audio_features.create(db_session, **feature_create)
 
-    async def search_tracks(self, query: str, limit: int = 10) -> List[Dict]:
+    async def search_tracks(
+        self, query: str, limit: int = 10, type: str = "track"
+    ) -> List[Dict]:
         """Search for tracks on Spotify.
 
         Args:

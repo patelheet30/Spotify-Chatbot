@@ -1,0 +1,439 @@
+import csv
+import logging
+import os
+import re
+from typing import Any, Dict, Optional, Tuple
+
+import aiml
+import nltk
+import numpy as np
+from nltk.corpus import stopwords
+from nltk.stem import WordNetLemmatizer
+from nltk.tokenize import word_tokenize
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+
+from app.api.spotify import SpotifyAPI
+from app.database import crud
+
+logger = logging.getLogger(__name__)
+
+
+class MusicInfoChatbot:
+    """
+    todo: Work on credits for the info and response handler and also listeners
+    todo: Remove templates for tempo, genre etc.
+    """
+
+    def __init__(self, db_session, spotify_api: SpotifyAPI):
+        self.db_session = db_session
+        self.spotify_api = spotify_api
+
+        self.kernel = aiml.Kernel()
+        aiml_path = os.path.join(
+            os.path.dirname(__file__), "..", "knowledge", "patterns.xml"
+        )
+        self.kernel.learn(aiml_path)
+
+        self.qa_pairs = self._load_qa_pairs()
+
+        nltk.download("stopwords", quiet=True)
+        nltk.download("punkt", quiet=True)
+        nltk.download("punkt_tab", quiet=True)
+        nltk.download("wordnet", quiet=True)
+        self.lemmatizer = WordNetLemmatizer()
+        self.stop_words = set(stopwords.words("english"))
+
+        self.vectorizer = TfidfVectorizer()
+        self._prepare_similarity_matching()
+
+    def _load_qa_pairs(self) -> Dict[str, str]:
+        qa_dict = {}
+        qa_path = os.path.join(
+            os.path.dirname(__file__), "..", "knowledge", "qa_pairs.csv"
+        )
+
+        try:
+            with open(qa_path, "r", encoding="utf-8") as file:
+                reader = csv.DictReader(file)
+                for row in reader:
+                    qa_dict[row["question"]] = row["answer"]
+                return qa_dict
+        except FileNotFoundError:
+            print(f"File not found: {qa_path}")
+            return {}
+
+    def _prepare_similarity_matching(self):
+        if not self.qa_pairs:
+            self.questions = []
+            self.tfidf_matrix = None
+            return
+
+        questions = list(self.qa_pairs.keys())
+        self.tfidf_matrix = self.vectorizer.fit_transform(questions)  # type: ignore
+        self.questions = questions
+
+    def _preprocess_text(self, text: str) -> str:
+        tokens = word_tokenize(text.lower())
+        tokens = [
+            self.lemmatizer.lemmatize(token)
+            for token in tokens
+            if token not in self.stop_words and len(token) > 1
+        ]
+        return " ".join(tokens)
+
+    def _get_similar_question(
+        self, user_input: str, threshold: float = 0.3
+    ) -> Optional[str]:
+        if self.tfidf_matrix is None or self.tfidf_matrix.shape[0] == 0:
+            return None
+
+        cleaned_input = self._clean_input(user_input.lower())
+
+        logger.info(f"Finding similar question for: {cleaned_input}")
+
+        if cleaned_input.startswith("what is") or cleaned_input.startswith("what are"):
+            subject = (
+                cleaned_input.replace("what is", "").replace("what are", "").strip()
+            )
+
+            for question in self.questions:
+                q_lower = question.lower()
+                if subject in q_lower and (
+                    q_lower.startswith("what is")
+                    or q_lower.startswith("what are")
+                    or "define" in q_lower
+                ):
+                    logger.info(
+                        f"Direct match found for subject: {subject} in question: {question}"
+                    )
+                    return question
+
+        processed_input = self._preprocess_text(cleaned_input)
+        input_vector = self.vectorizer.transform([processed_input])
+        similarities = cosine_similarity(input_vector, self.tfidf_matrix)[0]
+        max_similarity_idx = np.argmax(similarities)
+        max_similarity = similarities[max_similarity_idx]
+
+        logger.info(
+            f"Best match: {self.questions[max_similarity_idx]} with score {max_similarity}"
+        )
+
+        if max_similarity >= threshold:
+            return self.questions[max_similarity_idx]
+
+        return None
+
+    def _clean_input(self, text: str) -> str:
+        cleaned = re.sub(r"[?.!,;:]", "", text)
+        cleaned = " ".join(cleaned.split())
+        return cleaned.strip()
+
+    async def _fetch_music_info(self, response: str, user_input: str) -> Dict[str, Any]:
+        context = {}
+
+        logger.info(f"Fetching music info for: {response}, user input: {user_input}")
+
+        if "Hi! I'm your music chatbot" in response:
+            context["query_type"] = "greeting"
+
+        if "information about" in response.lower():
+            artist_name = self._clean_input(
+                user_input.replace("WHO IS", "").replace("TELL ME ABOUT", "").strip()
+            )
+
+            logger.info(f"Fetching artist info for: {artist_name}")
+
+            artists = crud.artist.get_multi(self.db_session)
+            artist_match = next(
+                (a for a in artists if a.name.lower() == artist_name.lower()), None
+            )
+
+            if artist_match:
+                context["artist_info"] = artist_match
+            else:
+                search_results = await self.spotify_api.search_tracks(
+                    artist_name, limit=1
+                )
+                if (
+                    search_results
+                    and search_results[0].get("artists")
+                    and search_results[0]["artists"][0].get("id")
+                ):
+                    artist_id = search_results[0]["artists"][0]["id"]
+                    artist_data = await self.spotify_api.get_artist_data(
+                        artist_id, self.db_session
+                    )
+                    if artist_data:
+                        context["artist_info"] = artist_data
+
+        elif "album" in response.lower():
+            if "HOW MANY TRACKS" in user_input:
+                album_name = (
+                    response.split("Let me check the track count for")[1]
+                    .split("album")[0]
+                    .strip()
+                )
+
+                logger.info(f"Album name: {album_name}")
+
+                albums = crud.album.get_multi(self.db_session, limit=2000)
+                album_match = next(
+                    (a for a in albums if a.name.lower() == album_name.lower()), None
+                )
+
+                if album_match:
+                    context["album_info"] = album_match
+                    context["query_type"] = "album_length"
+                else:
+                    search_results = await self.spotify_api.search_tracks(
+                        album_name, limit=1, type="album"
+                    )
+                    if (
+                        search_results
+                        and search_results[0].get("album")
+                        and search_results[0]["album"].get("id")
+                    ):
+                        album_id = search_results[0]["album"]["id"]
+                        album_data = await self.spotify_api.get_album_data(
+                            album_id, self.db_session
+                        )
+                        if album_data:
+                            context["album_info"] = album_data
+                            context["query_type"] = "album_length"
+
+            elif "RELEASE IN" in user_input:
+                artist, year = user_input.split("RELEASE IN")
+                artist = self._clean_input(
+                    artist.replace("WHICH ALBUM DID", "").strip()
+                )
+                year = self._clean_input(year.strip())
+
+                artists = crud.artist.get_multi(self.db_session)
+                artist_match = next(
+                    (a for a in artists if a.name.lower() == artist.lower()), None
+                )
+
+                if artist_match:
+                    artist_albums = artist_match.albums
+                    year_albums = [
+                        album
+                        for album in artist_albums
+                        if album.release_date and album.release_date.startswith(year)
+                    ]
+
+                    context["album_year_info"] = {
+                        "artist": artist_match,
+                        "year": year,
+                        "albums": year_albums,
+                    }
+                else:
+                    search_results = await self.spotify_api.search_tracks(
+                        artist, limit=1
+                    )
+                    if (
+                        search_results
+                        and search_results[0].get("artists")
+                        and search_results[0]["artists"][0].get("id")
+                    ):
+                        artist_id = search_results[0]["artists"][0]["id"]
+                        artist_data = await self.spotify_api.get_artist_data(
+                            artist_id, self.db_session
+                        )
+                        if artist_data:
+                            context["album_year_info"] = {
+                                "artist": artist_data,
+                                "year": year,
+                            }
+
+            else:
+                album_name = self._clean_input(
+                    user_input.split("ALBUM")[1].strip()
+                    if "ALBUM" in user_input
+                    else user_input.strip()
+                )
+
+                albums = crud.album.get_multi(self.db_session, limit=2000)
+                album_match = next(
+                    (a for a in albums if a.name.lower() == album_name.lower()), None
+                )
+
+                if album_match:
+                    context["album_info"] = album_match
+                else:
+                    search_results = await self.spotify_api.search_tracks(
+                        album_name, limit=1, type="album"
+                    )
+                    if (
+                        search_results
+                        and search_results[0].get("album")
+                        and search_results[0]["album"].get("id")
+                    ):
+                        album_id = search_results[0]["album"]["id"]
+                        album_data = await self.spotify_api.get_album_data(
+                            album_id, self.db_session
+                        )
+                        if album_data:
+                            context["album_info"] = album_data
+
+        elif "SONGS ARE ON" in user_input or "TRACKS ON" in user_input:
+            album_name = self._clean_input(
+                re.sub(
+                    r".*?(SONGS ARE ON|TRACKS ON|TRACKS ARE ON)",
+                    "",
+                    user_input,
+                    flags=re.IGNORECASE,
+                ).strip()
+            )
+
+            logger.info(f"Fetching tracks for album: {album_name}")
+
+            albums = crud.album.get_multi(self.db_session, limit=2000)
+            album_match = next(
+                (a for a in albums if a.name.lower() == album_name.lower()), None
+            )
+
+            if album_match:
+                album_tracks = crud.album.get_album_tracks(
+                    self.db_session, album_match.spotify_id
+                )
+                logger.info(f"Found {len(album_tracks)} tracks for album: {album_name}")
+                context["album_info"] = album_match
+                context["album_tracks"] = album_tracks
+                context["query_type"] = "track_list"
+            else:
+                search_results = await self.spotify_api.search_tracks(
+                    album_name, limit=1, type="album"
+                )
+                if (
+                    search_results
+                    and search_results[0].get("album")
+                    and search_results[0]["album"].get("id")
+                ):
+                    album_id = search_results[0]["album"]["id"]
+                    album_data = await self.spotify_api.get_album_data(
+                        album_id, self.db_session
+                    )
+                    if album_data:
+                        context["album_info"] = album_data
+                        context["query_type"] = "track_list"
+
+        elif "HOW LONG IS" in user_input:
+            track_name = self._clean_input(
+                user_input.replace("HOW LONG IS", "").strip()
+            )
+
+            tracks = crud.track.get_multi(self.db_session, limit=10000)
+            track_match = next(
+                (t for t in tracks if t.name.lower() == track_name.lower()), None
+            )
+
+            if track_match:
+                context["track_info"] = track_match
+                context["query_type"] = "duration"
+            else:
+                search_results = await self.spotify_api.search_tracks(
+                    track_name, limit=1
+                )
+                if search_results and search_results[0].get("id"):
+                    track_id = search_results[0]["id"]
+                    track_data = await self.spotify_api.get_track_data(
+                        track_id, self.db_session
+                    )
+                    if track_data:
+                        context["track_info"] = track_data
+                        context["query_type"] = "duration"
+
+        return context
+
+    def _format_response(self, template: str, context: Dict[str, Any]) -> str:
+        if context.get("query_type") == "greeting":
+            return "Hello! I'm your music chatbot. You can ask me questions about artists, albums, tracks, genres, and more."
+
+        if "artist_info" in context:
+            artist = context["artist_info"]
+
+            artist_albums = artist.albums
+            artist_tracks = []
+            for album in artist_albums:
+                album_tracks = crud.album.get_album_tracks(
+                    self.db_session, album.spotify_id
+                )
+                artist_tracks.extend(album_tracks)
+
+            return f"Here's what I found about {artist.name}:\nThey have {artist.followers:,} followers on Spotify.\nTheir Spotify Popularity score is {artist.popularity}.\nThey have released {len(artist.albums)} albums and {len(artist_tracks)} tracks."
+
+        elif "track_info" in context:
+            track = context["track_info"]
+
+            if context.get("query_type") == "duration":
+                return f"The track {track.name} is {track.duration_ms // 60000} minutes and {track.duration_ms % 60000 // 1000} seconds long."
+
+            return f"The track {track.name} is by {track.artist.name} and is part of the album {track.album.name}."
+
+        elif "album_info" in context:
+            album = context["album_info"]
+
+            if context.get("query_type") == "album_length":
+                return f"The album {album.name} has {album.total_tracks} tracks."
+
+            if context.get("query_type") == "track_list":
+                tracks = context.get("album_tracks", [])
+                track_list = "\n".join(
+                    [f"{track.track_number}. {track.name}" for track in tracks]
+                )
+                return f"The album {album.name} has {album.total_tracks} tracks:\n{track_list}"
+
+            return f"The album {album.name} by {album.artists[0].name} was released on {album.release_date}."
+
+        elif "album_year_info" in context:
+            info = context["album_year_info"]
+            artist = info["artist"]
+            year = info["year"]
+
+            if "albums" in info:
+                year_albums = info["albums"]
+            else:
+                year_albums = [
+                    album
+                    for album in artist.albums
+                    if album.release_date and album.release_date.startswith(year)
+                ]
+
+            if year_albums:
+                album_list = [album for album in year_albums]
+                album_name_list = "\n".join(
+                    [
+                        f"{i + 1}. {album.name} ({album.album_type.capitalize()})"
+                        for i, album in enumerate(album_list)
+                    ]
+                )
+                return f"{artist.name} released these albums in {year}:\n{album_name_list}."
+            return f"I couldn't find any albums by {artist.name} released in {year}."
+
+        return template
+
+    async def get_response(self, user_input: str) -> Tuple[str, Dict[str, Any]]:
+        cleaned_input = user_input.upper().strip()
+
+        aiml_response = self.kernel.respond(cleaned_input)
+
+        logger.info(f"AIML response: {aiml_response}")
+
+        if aiml_response and aiml_response.startswith("#30$"):
+            user_input = user_input.split("#30$")[-1].strip()
+            similar_question = self._get_similar_question(user_input)
+            if similar_question:
+                logger.info(f"Found similar question: {similar_question}")
+                return self.qa_pairs[similar_question], {}
+
+        if (
+            aiml_response
+            and aiml_response != "I'll try to find relevant music information about:"
+        ):
+            context = await self._fetch_music_info(aiml_response, cleaned_input)
+            if context:
+                response = self._format_response(aiml_response, context)
+                return response, context
+
+        return "I'm sorry, I don't have an answer to that question.", {}
