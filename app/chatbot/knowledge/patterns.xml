@@ -39,6 +39,11 @@
         <template>I'll check what albums <star index="1" /> released in <star index="2" /></template>
     </category>
 
+    <category>
+        <pattern>WHEN WAS THE ALBUM * RELEASED</pattern>
+        <template>Let me check when the album <star/> was released</template>
+    </category>
+
     <!-- Track listing queries -->
     <category>
         <pattern>WHAT SONGS ARE ON *</pattern>

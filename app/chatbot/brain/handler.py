@@ -2,6 +2,7 @@ import csv
 import logging
 import os
 import re
+from datetime import datetime
 from typing import Any, Dict, Optional, Tuple
 
 import aiml
@@ -153,7 +154,7 @@ class MusicInfoChatbot:
                 context["artist_info"] = artist_match
             else:
                 search_results = await self.spotify_api.search_tracks(
-                    artist_name, limit=1
+                    artist_name, limit=1, type="artist"
                 )
                 if (
                     search_results
@@ -245,6 +246,39 @@ class MusicInfoChatbot:
                                 "artist": artist_data,
                                 "year": year,
                             }
+
+            elif "WHEN WAS THE ALBUM" in user_input:
+                # Extract the album name from the user input "WHEN WAS THE ALBUM * RELEASED"
+                album_name = self._clean_input(
+                    user_input.replace("WHEN WAS THE ALBUM", "").replace("RELEASED", "")
+                )
+
+                logger.info(f"Fetching album info for: {album_name}")
+
+                albums = crud.album.get_multi(self.db_session, limit=2000)
+                album_match = next(
+                    (a for a in albums if a.name.lower() == album_name.lower()), None
+                )
+
+                if album_match:
+                    context["album_info"] = album_match
+                    context["query_type"] = "release_date"
+                else:
+                    search_results = await self.spotify_api.search_tracks(
+                        album_name, limit=1, type="album"
+                    )
+                    if (
+                        search_results
+                        and search_results[0].get("album")
+                        and search_results[0]["album"].get("id")
+                    ):
+                        album_id = search_results[0]["album"]["id"]
+                        album_data = await self.spotify_api.get_album_data(
+                            album_id, self.db_session
+                        )
+                        if album_data:
+                            context["album_info"] = album_data
+                            context["query_type"] = "release_date"
 
             else:
                 album_name = self._clean_input(
@@ -383,6 +417,17 @@ class MusicInfoChatbot:
                     [f"{track.track_number}. {track.name}" for track in tracks]
                 )
                 return f"The album {album.name} has {album.total_tracks} tracks:\n{track_list}"
+
+            if context.get("query_type") == "release_date":
+                release_date = datetime.strptime(
+                    album.release_date, "%Y-%m-%d"
+                ).strftime("%d %B %Y")
+                if album.release_date:
+                    return f"The album {album.name} was released on {release_date}."
+                else:
+                    return (
+                        f"I couldn't find the release date for the album {album.name}."
+                    )
 
             return f"The album {album.name} by {album.artists[0].name} was released on {album.release_date}."
 
