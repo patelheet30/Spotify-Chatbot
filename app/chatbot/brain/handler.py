@@ -15,6 +15,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 from app.api.spotify import SpotifyAPI
+from app.chatbot.brain.logic import KnowledgeBase
 from app.database import crud
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,11 @@ class MusicInfoChatbot:
         self.kernel.learn(aiml_path)
 
         self.qa_pairs = self._load_qa_pairs()
+
+        self.kb = KnowledgeBase()
+        logger.info(
+            f"Loaded {len(self.kb.kb_expressions)} statements from knowledge base"
+        )
 
         nltk.download("stopwords", quiet=True)
         nltk.download("punkt", quiet=True)
@@ -460,6 +466,24 @@ class MusicInfoChatbot:
 
     async def get_response(self, user_input: str) -> Tuple[str, Dict[str, Any]]:
         cleaned_input = user_input.upper().strip()
+
+        if user_input.lower().startswith(
+            "i know that"
+        ) or user_input.lower().startswith("check that"):
+            logger.info(f"Checking FOL: {user_input}")
+            response = self.kb.handle_logic_command(user_input)
+            return response, {"query_type": "logic"}
+
+        if cleaned_input == "SAVE KNOWLEDGE BASE":
+            success = self.kb.save_kb()
+            if success:
+                return "I've saved the knowledge base.", {}
+            else:
+                return "Error saving knowledge base.", {}
+
+        if cleaned_input == "DEBUG KNOWLEDGE BASE":
+            kb_info = self.kb.handle_logic_command(user_input)
+            return f"Knowledge Base Info: {kb_info}", {}
 
         aiml_response = self.kernel.respond(cleaned_input)
 

@@ -169,3 +169,8 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+album_covers_data/
+album_dataset_info.csv
+output/
+album_covers_data.zip
+outputs.txt
