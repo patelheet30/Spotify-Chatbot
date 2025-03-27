@@ -3,6 +3,7 @@ import logging
 import os
 import re
 from datetime import datetime
+from enum import Enum
 from typing import Any, Dict, Optional, Tuple
 
 import aiml
@@ -16,9 +17,17 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 from app.api.spotify import SpotifyAPI
 from app.chatbot.brain.logic import KnowledgeBase
+from app.chatbot.vision.classifier import MusicAlbumClassifier
+from app.chatbot.vision.utils import get_image_path
 from app.database import crud
 
 logger = logging.getLogger(__name__)
+
+
+class ConversationState(Enum):
+    NORMAL = 0
+    AWAITING_IMAGE = 1
+    AWAITING_ENSEMBLE_CHOICE = 3
 
 
 class MusicInfoChatbot:
@@ -43,6 +52,14 @@ class MusicInfoChatbot:
         logger.info(
             f"Loaded {len(self.kb.kb_expressions)} statements from knowledge base"
         )
+
+        self.classifier = MusicAlbumClassifier()
+        logger.info(
+            f"Loaded {len(self.classifier.models)} models for music album classification"
+        )
+
+        self.state = ConversationState.NORMAL
+        self.context = {}
 
         nltk.download("stopwords", quiet=True)
         nltk.download("punkt", quiet=True)
@@ -135,6 +152,74 @@ class MusicInfoChatbot:
         cleaned = re.sub(r"[?.!,;:]", "", text)
         cleaned = " ".join(cleaned.split())
         return cleaned.strip()
+
+    async def classify_album_era(
+        self, img_path: str, use_ensemble: bool = False
+    ) -> Dict[str, Any]:
+        try:
+            img_path = get_image_path(img_path)  # type: ignore
+            if not img_path:
+                return {
+                    "query_type": "album_era_classification",
+                    "era": "Invalid image path",
+                }
+
+            available_models = list(self.classifier.models.keys())
+
+            logger.info(f"Available models: {', '.join(available_models)}")
+            logger.info(f"Ensemble classification: {str(use_ensemble)}")
+
+            result = self.classifier.classify_image(img_path, ensemble=use_ensemble)
+
+            confidence = f"{result['confidence'] * 100:.1f}%"
+
+            if "model_used" in result:
+                if result["model_used"] == "ensemble":
+                    model_info = f"Ensemble of {', '.join(available_models)}"
+                else:
+                    model_info = f"Model used: {result['model_used']}"
+            else:
+                model_info = (
+                    "available model"
+                    if len(available_models) == 1
+                    else "ensemble model"
+                )
+
+            context = {
+                "query_type": "album_era_classification",
+                "classification": result,
+                "era": result["era"],
+                "confidence": confidence,
+                "model": model_info,
+                "available_models": available_models,
+            }
+            return context
+        except Exception as e:
+            logger.error(f"Error classifying album era: {e}")
+            return {
+                "query_type": "album_era_classification",
+                "era": "Error classifying album era",
+                "error": str(e),
+            }
+
+    def handle_ensemble_choice(self, user_input: str) -> Tuple[str, Dict[str, Any]]:
+        cleaned_input = user_input.upper().strip()
+        use_ensemble = "YES" in cleaned_input or "Y" in cleaned_input
+
+        available_models = list(self.classifier.models.keys())
+        can_use_ensemble = len(available_models) > 1
+        if use_ensemble and not can_use_ensemble:
+            model_name = available_models[0] if available_models else "Unknown"
+            message = f"I can only use the {model_name} model for classification."
+            use_ensemble = False
+        else:
+            message = "Please provide the image (URL/PATH) of the album cover."
+
+        self.context["use_ensemble"] = use_ensemble  # type: ignore
+        self.context["available_models"] = available_models  # type: ignore
+        self.state = ConversationState.AWAITING_IMAGE
+
+        return message, self.context
 
     async def _fetch_music_info(self, response: str, user_input: str) -> Dict[str, Any]:
         context = {}
@@ -466,6 +551,43 @@ class MusicInfoChatbot:
 
     async def get_response(self, user_input: str) -> Tuple[str, Dict[str, Any]]:
         cleaned_input = user_input.upper().strip()
+
+        if self.state == ConversationState.AWAITING_ENSEMBLE_CHOICE:
+            return self.handle_ensemble_choice(user_input)
+
+        elif self.state == ConversationState.AWAITING_IMAGE:
+            logger.info(f"Classifying album era for image: {user_input}")
+            use_ensemble = self.context.get("use_ensemble", False)
+            self.state = ConversationState.NORMAL
+
+            context = await self.classify_album_era(user_input, use_ensemble)  # type: ignore
+            if "error" in context:
+                return context["error"], {}
+
+            era = context["era"]
+            confidence = context["confidence"]
+            model = context["model"]
+            response = f"The album cover is classified as {era} with a confidence of {confidence} using the {model}."
+            if era == "Classical Era":
+                response += " Classical Era albums are typically from the 1980s to the 2000s, where physical media such as CDs were popular."
+            elif era == "Digital Era":
+                response += " Digital Era albums are typically from the 2010s to present, where digital streaming and downloads are common."
+
+            return response, context
+
+        elif (
+            cleaned_input == "WHICH ERA IS THIS ALBUM FROM"
+            or "ALBUM ERA" in cleaned_input
+            or "CLASSIFY THIS ALBUM" in cleaned_input
+            or "CLASSIFY ALBUM" in cleaned_input
+            or "WHAT ERA IS THIS ALBUM" in cleaned_input
+        ):
+            self.state = ConversationState.AWAITING_ENSEMBLE_CHOICE
+            self.context = {"query_type": "album_era_classification"}
+            return (
+                "Do you want to use ensemble classification? (YES/NO)",
+                self.context,
+            )
 
         if user_input.lower().startswith(
             "i know that"
