@@ -41,8 +41,11 @@ async def test_chatbot():
             print("🤖 Bot: Goodbye!")
             break
 
-        response, _ = await chatbot.get_response(user_input)
+        response, context = await chatbot.get_response(user_input)
         print(f"🤖 Bot: {response}")
+
+        if "audio_response" in context:
+            print(f"🔈 Audio Response saved to: {context['audio_response']}")
 
     db_session.close()
 

@@ -19,6 +19,12 @@ from app.api.spotify import SpotifyAPI
 from app.chatbot.brain.logic import KnowledgeBase
 from app.chatbot.vision.classifier import MusicAlbumClassifier
 from app.chatbot.vision.utils import get_image_path
+from app.chatbot.voice import (
+    get_speech_recogniser,
+    get_temp_audio_file,
+    get_text_to_speech,
+    play_audio_file,
+)
 from app.database import crud
 
 logger = logging.getLogger(__name__)
@@ -27,6 +33,7 @@ logger = logging.getLogger(__name__)
 class ConversationState(Enum):
     NORMAL = 0
     AWAITING_IMAGE = 1
+    AWAITING_VOICE_INPUT = 2
     AWAITING_ENSEMBLE_CHOICE = 3
 
 
@@ -57,6 +64,20 @@ class MusicInfoChatbot:
         logger.info(
             f"Loaded {len(self.classifier.models)} models for music album classification"
         )
+
+        self.speech_recogniser = get_speech_recogniser()
+        self.text_to_speech = get_text_to_speech()
+        logger.info(f"Speech Recogniser: {self.speech_recogniser.is_available()}")
+        logger.info(f"Text to Speech: {self.text_to_speech.is_available()}")
+        self.voice_enabled = False
+        self.voice_available = (
+            self.speech_recogniser.is_available() and self.text_to_speech.is_available()
+        )
+
+        if self.voice_available:
+            logger.info("Voice recognition and text-to-speech are available.")
+        else:
+            logger.warning("Voice recognition or text-to-speech is not available.")
 
         self.state = ConversationState.NORMAL
         self.context = {}
@@ -220,6 +241,67 @@ class MusicInfoChatbot:
         self.state = ConversationState.AWAITING_IMAGE
 
         return message, self.context
+
+    async def listen_voice(self) -> Tuple[str, Dict[str, Any]]:
+        if not self.voice_available:
+            return "Voice Recognition or Text-to-Speech is not available.", {}
+
+        self.state = ConversationState.AWAITING_VOICE_INPUT
+
+        text = self.speech_recogniser.listen()
+        self.state = ConversationState.NORMAL
+
+        if text:
+            response, context = await self._process_input(text)
+
+            if self.voice_enabled:
+                audio_path = get_temp_audio_file()
+                success = self.text_to_speech.save_to_file(response, audio_path)
+                if success:
+                    play_audio_file(audio_path)
+                    context[audio_path] = audio_path
+                else:
+                    logger.error("Failed to save audio file.")
+
+            return f"I heard: {text}\nMy Response: {response}", context
+        else:
+            return "Sorry, I couldn't hear you. Please try again.", {}
+
+    def speak_response(self, text: str) -> Tuple[str, Dict[str, Any]]:
+        if not self.voice_available:
+            return "Sorry, my speech system is not enabled", {}
+
+        try:
+            audio_path = get_temp_audio_file()
+            success = self.text_to_speech.save_to_file(text, audio_path)
+
+            if success:
+                self.text_to_speech.speak(text)
+                return f"Speaking: {text}", {"audio_response": audio_path}
+            else:
+                return "Failed to generate speech.", {}
+        except Exception as e:
+            logger.error(f"Error in text-to-speech: {e}")
+            return f"Error in speech synthesis: {str(e)}", {}
+
+    def toggle_voice(self, enable: bool) -> Tuple[str, Dict[str, Any]]:
+        if enable and not self.voice_available:
+            return "Voice recognition or text-to-speech is not available.", {
+                "voice_enabled": False
+            }
+
+        self.voice_enabled = enable if self.voice_available else False
+
+        if self.voice_enabled:
+            message = "Voice recognition and text-to-speech are enabled."
+            audio_path = get_temp_audio_file()
+            self.text_to_speech.save_to_file(message, audio_path)
+            self.text_to_speech.speak(message)
+            return message, {"voice_enabled": True, "audio_response": audio_path}
+        else:
+            return "Voice recognition and text-to-speech are disabled.", {
+                "voice_enabled": False
+            }
 
     async def _fetch_music_info(self, response: str, user_input: str) -> Dict[str, Any]:
         context = {}
@@ -549,7 +631,7 @@ class MusicInfoChatbot:
 
         return template
 
-    async def get_response(self, user_input: str) -> Tuple[str, Dict[str, Any]]:
+    async def _process_input(self, user_input: str) -> Tuple[str, Dict[str, Any]]:
         cleaned_input = user_input.upper().strip()
 
         if self.state == ConversationState.AWAITING_ENSEMBLE_CHOICE:
@@ -628,3 +710,58 @@ class MusicInfoChatbot:
                 return response, context
 
         return "I'm sorry, I don't have an answer to that question.", {}
+
+    async def get_response(self, user_input: str) -> Tuple[str, Dict[str, Any]]:
+        cleaned_input = user_input.upper().strip()
+
+        if (
+            cleaned_input == "LISTEN TO MY VOICE"
+            or "LISTEN TO ME" in cleaned_input
+            or "VOICE INPUT" in cleaned_input
+        ):
+            return await self.listen_voice()
+
+        if (
+            cleaned_input.startswith("SAY ")
+            or cleaned_input.startswith("SPEAK ")
+            or cleaned_input == "SPEAK THIS"
+        ):
+            text_to_speech = user_input
+            if cleaned_input.startswith("SAY "):
+                text_to_speech = user_input[4:].strip()
+            elif cleaned_input.startswith("SPEAK "):
+                text_to_speech = user_input[6:].strip()
+            elif cleaned_input == "SPEAK THIS":
+                text_to_speech = "Hello, I am your music chatbot assistant. How can I help you today?"
+
+            return self.speak_response(text_to_speech)
+
+        if cleaned_input.startswith("ENABLE VOICE") or cleaned_input == "TURN ON VOICE":
+            return self.toggle_voice(True)
+
+        if (
+            cleaned_input.startswith("DISABLE VOICE")
+            or cleaned_input == "TURN OFF VOICE"
+        ):
+            return self.toggle_voice(False)
+
+        if cleaned_input == "IS VOICE AVAILABLE":
+            if self.voice_available:
+                return "Yes, voice capabilities are available on this system.", {
+                    "voice_available": True
+                }
+            else:
+                return "No, voice capabilities are not available on this system.", {
+                    "voice_available": False
+                }
+
+        response, context = await self._process_input(user_input)
+
+        if self.voice_enabled and "audio_response" not in context:
+            audio_path = get_temp_audio_file()
+            success = self.text_to_speech.save_to_file(response, audio_path)
+            if success:
+                play_audio_file(audio_path)
+                context["audio_response"] = audio_path
+
+        return response, context

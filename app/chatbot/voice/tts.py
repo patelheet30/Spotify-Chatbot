@@ -1,8 +1,9 @@
 import logging
 import os
-import tempfile
+import platform
+import subprocess
 from abc import ABC, abstractmethod
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Tuple
 
 import pyttsx3
 
@@ -52,14 +53,27 @@ class TerminalTextToSpeech(BaseTextToSpeech):
             logger.error(f"Error during TTS conversion: {e}")
 
     def save_to_file(self, text: str, filename: str) -> bool:
-        try:
-            logger.info(f"Saving speech to file: {filename}")
-            self.engine.save_to_file(text, filename)
-            self.engine.runAndWait()
-            return os.path.exists(filename)
-        except Exception as e:
-            logger.error(f"Error saving speech to file: {e}")
-            return False
+        system = platform.system()
+        if system == "Darwin":
+            try:
+                logger.info(
+                    f"Saving speech to file on macOS using 'say' command: {filename}"
+                )
+                command = ["say", "-o", filename, text]
+                subprocess.run(command, check=True)
+                return os.path.exists(filename)
+            except Exception as e:
+                logger.error(f"Error saving speech to file using 'say' command: {e}")
+                return False
+        else:
+            try:
+                logger.info(f"Saving speech to file: {filename}")
+                self.engine.save_to_file(text, filename)
+                self.engine.runAndWait()
+                return os.path.exists(filename)
+            except Exception as e:
+                logger.error(f"Error saving speech to file: {e}")
+                return False
 
     def get_available_voices(self) -> List[Tuple[str, str]]:
         voices = self.engine.getProperty("voices")

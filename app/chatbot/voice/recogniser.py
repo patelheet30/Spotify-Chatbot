@@ -1,7 +1,6 @@
 import logging
-import os
 from abc import ABC, abstractmethod
-from typing import Optional, Union
+from typing import Optional
 
 import speech_recognition as sr
 from speech_recognition.recognizers.google import recognize_legacy
