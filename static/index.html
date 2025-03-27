@@ -1,0 +1,710 @@
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Spotify Music Chatbot</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" />
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0c0c0c;
+            color: #e5e5e5;
+        }
+
+        .chat-container {
+            height: calc(100vh - 120px);
+        }
+
+        .chat-messages {
+            height: calc(100% - 70px);
+            overflow-y: auto;
+            scroll-behavior: smooth;
+        }
+
+        .user-message {
+            background-color: #2d2d2d;
+            color: #e5e5e5;
+            align-self: flex-end;
+            border-radius: 6px;
+        }
+
+        .bot-message {
+            background-color: #1e1e1e;
+            color: #e5e5e5;
+            align-self: flex-start;
+            border-radius: 6px;
+            border-left: 3px solid #1DB954;
+        }
+
+        .typing-indicator span {
+            animation: blink 1.4s infinite both;
+        }
+
+        .typing-indicator span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-indicator span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes blink {
+            0% {
+                opacity: 0.1;
+            }
+
+            20% {
+                opacity: 1;
+            }
+
+            100% {
+                opacity: 0.1;
+            }
+        }
+
+        /* Custom scrollbar */
+        .chat-messages::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .chat-messages::-webkit-scrollbar-track {
+            background: #1a1a1a;
+        }
+
+        .chat-messages::-webkit-scrollbar-thumb {
+            background-color: #444;
+            border-radius: 20px;
+        }
+
+        /* Button hover effects */
+        .btn-hover {
+            transition: all 0.2s ease;
+        }
+
+        .btn-hover:hover {
+            background-color: #333;
+        }
+
+        /* Card hover effects */
+        .card-hover {
+            transition: all 0.3s ease;
+            border: 1px solid #333;
+        }
+
+        .card-hover:hover {
+            border-color: #444;
+        }
+        
+        .sidebar-item {
+            border-left: 3px solid transparent;
+            transition: all 0.2s ease;
+        }
+        
+        .sidebar-item:hover {
+            border-left-color: #1DB954;
+            background-color: #1a1a1a;
+        }
+        
+        .sidebar-item.active {
+            border-left-color: #1DB954;
+            background-color: #1a1a1a;
+        }
+        
+        .header-bar {
+            border-bottom: 1px solid #333;
+        }
+    </style>
+</head>
+
+<body class="bg-[#0c0c0c] text-gray-200">
+    <div class="header-bar flex items-center justify-between px-6 py-3">
+        <div class="flex items-center space-x-2">
+            <i class="fab fa-spotify text-[#1DB954] text-xl"></i>
+            <h1 class="text-lg font-medium">Spotify Music Chatbot</h1>
+        </div>
+        <div class="flex items-center space-x-4">
+            <button id="helpButton" class="text-gray-400 hover:text-gray-200 transition-colors" title="Help">
+                <i class="fas fa-question-circle"></i>
+            </button>
+        </div>
+    </div>
+
+    <div class="flex h-[calc(100vh-56px)]">
+        <!-- Main chat area -->
+        <div class="flex-grow p-4">
+            <div class="bg-[#1a1a1a] rounded-md chat-container flex flex-col">
+                <div id="chatMessages" class="chat-messages flex flex-col space-y-4 p-4"></div>
+                <div id="typingIndicator" class="typing-indicator hidden ml-4 mb-2 text-[#1DB954] font-medium">
+                    <span>.</span><span>.</span><span>.</span>
+                </div>
+                <div class="flex p-4 border-t border-[#333]">
+                    <input id="messageInput" type="text"
+                        class="flex-grow bg-[#2d2d2d] border-none rounded-l-md px-4 py-2 focus:outline-none focus:ring-1 focus:ring-[#1DB954] text-gray-200"
+                        placeholder="Ask me about music..." />
+                    <button id="sendButton"
+                        class="bg-[#2d2d2d] text-gray-200 px-4 py-2 rounded-r-md hover:bg-[#333] transition-colors">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                    <button id="micButton"
+                        class="bg-[#2d2d2d] text-gray-200 px-4 py-2 rounded-md ml-2 hover:bg-[#333] transition-colors"
+                        title="Voice Input">
+                        <i class="fas fa-microphone"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sidebar -->
+        <div class="w-80 border-l border-[#333] overflow-y-auto">
+            <div class="p-4 border-b border-[#333]">
+                <h2 class="text-lg font-medium mb-2">Chat controls</h2>
+                <p class="text-sm text-gray-400">Spotify Music Assistant</p>
+            </div>
+
+            <div class="p-4 border-b border-[#333]">
+                <h3 class="text-sm font-medium text-gray-400 mb-2">Features</h3>
+                
+                <!-- Album Era Classifier -->
+                <div class="mb-6">
+                    <div class="sidebar-item p-3 rounded-md mb-2">
+                        <h4 class="font-medium flex items-center">
+                            <i class="fas fa-compact-disc text-[#1DB954] mr-2"></i>
+                            Album Era Classifier
+                        </h4>
+                        <p class="text-sm text-gray-400 mt-1">
+                            Upload an album cover to classify its era
+                        </p>
+                        
+                        <div class="mt-3">
+                            <div class="flex items-center justify-center bg-[#2d2d2d] rounded-md p-3 mb-3">
+                                <div id="imagePreviewContainer" class="hidden">
+                                    <img id="imagePreview" class="max-h-32 rounded" alt="Album preview" />
+                                </div>
+                                <div id="uploadPlaceholder" class="text-center">
+                                    <i class="fas fa-music text-gray-600 text-3xl mb-2"></i>
+                                    <p class="text-gray-500 text-xs">No image selected</p>
+                                </div>
+                            </div>
+                            
+                            <div class="flex items-center mb-3">
+                                <input type="checkbox" id="useEnsemble" class="mr-2" />
+                                <label for="useEnsemble" class="text-xs text-gray-400">Use ensemble models</label>
+                            </div>
+                            
+                            <div class="flex justify-between mb-2">
+                                <button id="uploadTabBtn"
+                                    class="px-3 py-1 text-xs bg-[#2d2d2d] text-gray-200 rounded-md hover:bg-[#333] w-1/2 mr-1">
+                                    Upload File
+                                </button>
+                                <button id="urlTabBtn"
+                                    class="px-3 py-1 text-xs bg-[#1a1a1a] text-gray-400 rounded-md hover:bg-[#333] w-1/2 ml-1">
+                                    URL
+                                </button>
+                            </div>
+                            
+                            <div id="uploadTab" class="mt-2">
+                                <input type="file" id="imageUpload" accept="image/*" class="hidden" />
+                                <button id="browseButton"
+                                    class="w-full px-3 py-1 text-xs bg-[#2d2d2d] rounded-md hover:bg-[#333] text-gray-300">
+                                    Browse Files
+                                </button>
+                            </div>
+                            
+                            <div id="urlTab" class="mt-2 hidden">
+                                <input type="text" id="imageUrl" class="w-full bg-[#2d2d2d] border-none rounded-md px-3 py-1 text-xs"
+                                    placeholder="Enter image URL" />
+                            </div>
+                            
+                            <button id="classifyButton"
+                                class="w-full bg-[#2d2d2d] text-gray-200 px-3 py-1 rounded-md hover:bg-[#333] text-xs mt-2 disabled:bg-[#1a1a1a] disabled:text-gray-500 disabled:cursor-not-allowed">
+                                Classify Album
+                            </button>
+                            
+                            <div id="classificationResult" class="mt-3 hidden">
+                                <div class="bg-[#2d2d2d] p-2 rounded-md text-xs">
+                                    <p class="font-medium">Classification Result:</p>
+                                    <p id="eraResult" class="text-[#1DB954]"></p>
+                                    <p id="confidenceResult" class="text-gray-400"></p>
+                                    <p id="modelResult" class="text-gray-400"></p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Voice Settings -->
+                <div class="sidebar-item p-3 rounded-md mb-2">
+                    <h4 class="font-medium flex items-center">
+                        <i class="fas fa-volume-up text-[#1DB954] mr-2"></i>
+                        Voice Settings
+                    </h4>
+                    
+                    <div class="flex items-center mt-2">
+                        <label class="relative inline-flex items-center cursor-pointer flex-grow">
+                            <input type="checkbox" id="voiceToggle" class="sr-only peer" />
+                            <div
+                                class="w-9 h-5 bg-[#2d2d2d] peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#1DB954] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-400 after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#1DB954]">
+                            </div>
+                            <span class="ml-3 text-xs text-gray-300">Enable Voice</span>
+                        </label>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1">
+                        When enabled, the chatbot will speak its responses out loud.
+                    </p>
+                </div>
+                
+                <!-- Knowledge Base -->
+                <div class="sidebar-item p-3 rounded-md">
+                    <h4 class="font-medium flex items-center">
+                        <i class="fas fa-database text-[#1DB954] mr-2"></i>
+                        Knowledge Base
+                    </h4>
+                    <p class="text-xs text-gray-400 mt-1">Interact with the music knowledge base</p>
+                    
+                    <div class="mt-3">
+                        <button id="kbHelpBtn" class="w-full px-3 py-1 text-xs bg-[#2d2d2d] rounded-md hover:bg-[#333] text-gray-300 mb-2">
+                            Show Help
+                        </button>
+                        
+                        <div id="kbHelpText" class="text-xs text-gray-400 bg-[#2d2d2d] p-2 rounded-md mb-2 hidden">
+                            <p class="font-medium text-gray-300">Commands:</p>
+                            <ul class="list-disc pl-4 mt-1">
+                                <li>"I know that X is Y" to add knowledge</li>
+                                <li>"Check that X is Y" to query knowledge</li>
+                                <li>"Save knowledge base" to save changes</li>
+                            </ul>
+                            <p class="mt-1 font-medium text-gray-300">Examples:</p>
+                            <ul class="list-disc pl-4 mt-1">
+                                <li>"I know that Drake is a rap artist"</li>
+                                <li>"Check that The Weeknd is a pop artist"</li>
+                                <li>"I know that Take Care is an album by Drake"</li>
+                            </ul>
+                        </div>
+                        
+                        <button id="saveKbButton" class="w-full bg-[#2d2d2d] text-gray-200 px-3 py-1 rounded-md hover:bg-[#333] text-xs">
+                            Save Knowledge Base
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="helpModal" class="fixed inset-0 bg-black bg-opacity-80 hidden flex items-center justify-center z-50">
+        <div class="bg-[#1a1a1a] rounded-md p-5 max-w-lg w-full mx-4 border border-[#333]">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-lg font-medium">Spotify Chatbot Help</h2>
+                <button id="closeHelpModal" class="text-gray-400 hover:text-gray-200">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <h3 class="font-medium text-gray-200">General Questions</h3>
+                    <ul class="list-disc pl-5 mt-1 text-gray-400 text-sm">
+                        <li>"Who is Drake?"</li>
+                        <li>"Tell me about The Weeknd"</li>
+                        <li>"How many tracks does After Hours have?"</li>
+                        <li>"When was the album Starboy released?"</li>
+                    </ul>
+                </div>
+                <div>
+                    <h3 class="font-medium text-gray-200">Track Information</h3>
+                    <ul class="list-disc pl-5 mt-1 text-gray-400 text-sm">
+                        <li>"What songs are on Astroworld?"</li>
+                        <li>"How long is Sicko Mode?"</li>
+                        <li>"Which album did Drake release in 2018?"</li>
+                    </ul>
+                </div>
+                <div>
+                    <h3 class="font-medium text-gray-200">Voice Features</h3>
+                    <ul class="list-disc pl-5 mt-1 text-gray-400 text-sm">
+                        <li>Use the microphone button to speak to the chatbot</li>
+                        <li>Toggle "Enable Voice Output" in the sidebar to hear responses</li>
+                    </ul>
+                </div>
+                <div>
+                    <h3 class="font-medium text-gray-200">Album Classification</h3>
+                    <ul class="list-disc pl-5 mt-1 text-gray-400 text-sm">
+                        <li>"Which era is this album from?"</li>
+                        <li>"Classify this album"</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const messageInput = document.getElementById('messageInput');
+            const sendButton = document.getElementById('sendButton');
+            const chatMessages = document.getElementById('chatMessages');
+            const typingIndicator = document.getElementById('typingIndicator');
+            const voiceToggle = document.getElementById('voiceToggle');
+            const micButton = document.getElementById('micButton');
+            const helpButton = document.getElementById('helpButton');
+            const helpModal = document.getElementById('helpModal');
+            const closeHelpModal = document.getElementById('closeHelpModal');
+            const imageUpload = document.getElementById('imageUpload');
+            const browseButton = document.getElementById('browseButton');
+            const classifyButton = document.getElementById('classifyButton');
+            const imagePreview = document.getElementById('imagePreview');
+            const imagePreviewContainer = document.getElementById('imagePreviewContainer');
+            const uploadPlaceholder = document.getElementById('uploadPlaceholder');
+            const classificationResult = document.getElementById('classificationResult');
+            const eraResult = document.getElementById('eraResult');
+            const confidenceResult = document.getElementById('confidenceResult');
+            const modelResult = document.getElementById('modelResult');
+            const uploadTabBtn = document.getElementById('uploadTabBtn');
+            const urlTabBtn = document.getElementById('urlTabBtn');
+            const uploadTab = document.getElementById('uploadTab');
+            const urlTab = document.getElementById('urlTab');
+            const imageUrl = document.getElementById('imageUrl');
+            const useEnsemble = document.getElementById('useEnsemble');
+            const saveKbButton = document.getElementById('saveKbButton');
+            const kbHelpBtn = document.getElementById('kbHelpBtn');
+            const kbHelpText = document.getElementById('kbHelpText');
+
+            let voiceEnabled = false;
+            let voiceAvailable = false;
+            let uploadMode = 'file';
+            let selectedFile = null;
+
+            fetch('/api/check-voice-available')
+                .then(response => response.json())
+                .then(data => {
+                    voiceAvailable = data.available;
+                    if (!voiceAvailable) {
+                        micButton.classList.add('opacity-50', 'cursor-not-allowed');
+                        micButton.disabled = true;
+                        micButton.title = 'Voice input not available';
+                        
+                        voiceToggle.disabled = true;
+                        const voiceSettingsLabel = document.querySelector('label[for="voiceToggle"]');
+                        voiceSettingsLabel.classList.add('opacity-50', 'cursor-not-allowed');
+                        voiceSettingsLabel.title = 'Voice output not available';
+                        
+                        const voiceSettingsSection = document.querySelector('.bg-white.shadow-md.p-4.mb-6');
+                        const noteElement = document.createElement('p');
+                        noteElement.className = 'text-sm text-red-500 mt-2';
+                        noteElement.textContent = 'Voice capabilities are not available on your system.';
+                        voiceSettingsSection.appendChild(noteElement);
+                    }
+                });
+
+
+            sendButton.addEventListener('click', sendMessage);
+            messageInput.addEventListener('keydown', e => {
+                if (e.key === 'Enter') sendMessage();
+            });
+
+            voiceToggle.addEventListener('change', function() {
+                toggleVoice(this.checked);
+            });
+            
+            micButton.addEventListener('click', activateVoiceInput);
+            
+            helpButton.addEventListener('click', () => {
+                helpModal.classList.remove('hidden');
+            });
+            
+            closeHelpModal.addEventListener('click', () => {
+                helpModal.classList.add('hidden');
+            });
+
+            browseButton.addEventListener('click', () => {
+                imageUpload.click();
+            });
+
+            imageUpload.addEventListener('change', handleImageSelect);
+            
+            classifyButton.addEventListener('click', classifyImage);
+
+            uploadTabBtn.addEventListener('click', () => {
+                uploadMode = 'file';
+                setActiveTab('file');
+            });
+
+            urlTabBtn.addEventListener('click', () => {
+                uploadMode = 'url';
+                setActiveTab('url');
+            });
+
+            imageUrl.addEventListener('input', () => {
+                if (imageUrl.value) {
+                    imagePreview.src = imageUrl.value;
+                    imagePreviewContainer.classList.remove('hidden');
+                    uploadPlaceholder.classList.add('hidden');
+                    classifyButton.disabled = false;
+                } else {
+                    imagePreviewContainer.classList.add('hidden');
+                    uploadPlaceholder.classList.remove('hidden');
+                    classifyButton.disabled = true;
+                }
+            });
+
+            saveKbButton.addEventListener('click', saveKnowledgeBase);
+            
+            kbHelpBtn.addEventListener('click', () => {
+                kbHelpText.classList.toggle('hidden');
+            });
+
+            function setActiveTab(tab) {
+                if (tab === 'file') {
+                    uploadTabBtn.classList.remove('bg-[#1a1a1a]', 'text-gray-400');
+                    uploadTabBtn.classList.add('bg-[#2d2d2d]', 'text-gray-200');
+                    
+                    urlTabBtn.classList.remove('bg-[#2d2d2d]', 'text-gray-200');
+                    urlTabBtn.classList.add('bg-[#1a1a1a]', 'text-gray-400');
+                    
+                    uploadTab.classList.remove('hidden');
+                    urlTab.classList.add('hidden');
+                } else {
+                    urlTabBtn.classList.remove('bg-[#1a1a1a]', 'text-gray-400');
+                    urlTabBtn.classList.add('bg-[#2d2d2d]', 'text-gray-200');
+                    
+                    uploadTabBtn.classList.remove('bg-[#2d2d2d]', 'text-gray-200');
+                    uploadTabBtn.classList.add('bg-[#1a1a1a]', 'text-gray-400');
+                    
+                    urlTab.classList.remove('hidden');
+                    uploadTab.classList.add('hidden');
+                }
+            }
+
+            function handleImageSelect(e) {
+                const file = e.target.files[0];
+                if (file) {
+                    selectedFile = file;
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        imagePreview.src = e.target.result;
+                        imagePreviewContainer.classList.remove('hidden');
+                        uploadPlaceholder.classList.add('hidden');
+                        classifyButton.disabled = false;
+                    }
+                    reader.readAsDataURL(file);
+                }
+            }
+
+            function classifyImage() {
+                classifyButton.disabled = true;
+                classifyButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Classifying...';
+                classificationResult.classList.add('hidden');
+                
+                if (uploadMode === 'file' && selectedFile) {
+                    const formData = new FormData();
+                    formData.append('file', selectedFile);
+                    formData.append('use_ensemble', useEnsemble.checked);
+                    
+                    fetch('/api/upload-image', {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => response.json())
+                    .then(handleClassificationResult)
+                    .catch(handleClassificationError);
+                } else if (uploadMode === 'url' && imageUrl.value) {
+                    fetch('/api/classify-image-url', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            image_url: imageUrl.value,
+                            use_ensemble: useEnsemble.checked
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(handleClassificationResult)
+                    .catch(handleClassificationError);
+                }
+            }
+
+            function handleClassificationResult(data) {
+                classifyButton.innerHTML = 'Classify Album';
+                classifyButton.disabled = false;
+                
+                eraResult.textContent = data.era;
+                confidenceResult.textContent = `Confidence: ${data.confidence}`;
+                modelResult.textContent = `Model: ${data.model}`;
+                classificationResult.classList.remove('hidden');
+                
+                const message = `The album cover is classified as ${data.era} with a confidence of ${data.confidence} using the ${data.model}.`;
+                addBotMessage(message);
+            }
+
+            function handleClassificationError(error) {
+                classifyButton.innerHTML = 'Classify Album';
+                classifyButton.disabled = false;
+                addBotMessage(`Error classifying image: ${error.message}`);
+            }
+
+            function saveKnowledgeBase() {
+                addUserMessage('Save knowledge base');
+                showTypingIndicator();
+                
+                fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: 'Save knowledge base' })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    hideTypingIndicator();
+                    addBotMessage(data.response);
+                })
+                .catch(error => {
+                    hideTypingIndicator();
+                    addBotMessage('Error saving knowledge base');
+                    console.error('Error:', error);
+                });
+            }
+
+            function toggleVoice(enabled) {
+                if (!voiceAvailable) {
+                    voiceToggle.checked = false;
+                    return;
+                }
+                
+                const formData = new FormData();
+                formData.append('enable', enabled);
+                
+                fetch('/api/toggle-voice', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    voiceEnabled = data.voice_enabled;
+                    voiceToggle.checked = voiceEnabled;
+                })
+                .catch(error => {
+                    console.error('Error toggling voice:', error);
+                    voiceToggle.checked = voiceEnabled;
+                });
+            }
+
+            function activateVoiceInput() {
+                if (!voiceAvailable) return;
+                
+                addBotMessage('Listening...');
+                micButton.disabled = true;
+                micButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+                
+                fetch('/api/listen-voice', {
+                    method: 'POST'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    const responseText = data.response.replace('I heard: ', '');
+                    const parts = responseText.split('\nMy Response: ');
+                    
+                    if (parts.length > 1) {
+                        const userInput = parts[0];
+                        const botResponse = parts[1];
+                        
+                        addUserMessage(userInput);
+                        
+                        addBotMessage(botResponse);
+                        
+                        if (voiceEnabled && data.context && data.context.audio_response) {
+                            const audio = new Audio(`/static/uploads/${data.context.audio_response.split('/').pop()}`);
+                            audio.play();
+                        }
+                    } else {
+                        addBotMessage(data.response);
+                    }
+                    
+                    micButton.disabled = false;
+                    micButton.innerHTML = '<i class="fas fa-microphone"></i>';
+                })
+                .catch(error => {
+                    console.error('Error with voice input:', error);
+                    addBotMessage('Failed to process voice input');
+                    micButton.disabled = false;
+                    micButton.innerHTML = '<i class="fas fa-microphone"></i>';
+                });
+            }
+
+            function sendMessage() {
+                const message = messageInput.value.trim();
+                if (!message) return;
+                
+                addUserMessage(message);
+                messageInput.value = '';
+                showTypingIndicator();
+                
+                fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    hideTypingIndicator();
+                    addBotMessage(data.response);
+                    
+                    if (data.voice_enabled !== undefined) {
+                        voiceEnabled = data.voice_enabled;
+                        voiceToggle.checked = voiceEnabled;
+                    }
+                    
+                    if (voiceEnabled && data.audio_response) {
+                        const audio = new Audio(`/static/uploads/${data.audio_response.split('/').pop()}`);
+                        audio.play();
+                    }
+                    
+                    if (data.context && data.context.query_type === 'album_era_classification') {
+                        handleAlbumEraClassificationContext(data.context);
+                    }
+                })
+                .catch(error => {
+                    hideTypingIndicator();
+                    addBotMessage('Sorry, I encountered an error processing your request.');
+                    console.error('Error:', error);
+                });
+            }
+            
+            function handleAlbumEraClassificationContext(context) {
+                if (context.era) {
+                    eraResult.textContent = context.era;
+                    confidenceResult.textContent = `Confidence: ${context.confidence}`;
+                    modelResult.textContent = `Model: ${context.model}`;
+                    classificationResult.classList.remove('hidden');
+                }
+            }
+
+            function addUserMessage(message) {
+                const messageElement = document.createElement('div');
+                messageElement.className = 'user-message px-4 py-3 mb-2 max-w-3xl self-end';
+                messageElement.innerText = message;
+                chatMessages.appendChild(messageElement);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+
+            function addBotMessage(message) {
+                const messageElement = document.createElement('div');
+                messageElement.className = 'bot-message px-4 py-3 mb-2 max-w-3xl self-start';
+                messageElement.innerText = message;
+                chatMessages.appendChild(messageElement);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+
+            function showTypingIndicator() {
+                typingIndicator.classList.remove('hidden');
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+
+            function hideTypingIndicator() {
+                typingIndicator.classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+
+</html>
+

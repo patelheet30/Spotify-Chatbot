@@ -105,7 +105,7 @@ class MusicInfoChatbot:
                     qa_dict[row["question"]] = row["answer"]
                 return qa_dict
         except FileNotFoundError:
-            print(f"File not found: {qa_path}")
+            logger.info(f"File not found: {qa_path}")
             return {}
 
     def _prepare_similarity_matching(self):
@@ -285,23 +285,36 @@ class MusicInfoChatbot:
             return f"Error in speech synthesis: {str(e)}", {}
 
     def toggle_voice(self, enable: bool) -> Tuple[str, Dict[str, Any]]:
-        if enable and not self.voice_available:
-            return "Voice recognition or text-to-speech is not available.", {
+        if not self.voice_available:
+            return "Voice Recognition or Text-to-Speech is not available.", {
                 "voice_enabled": False
             }
 
-        self.voice_enabled = enable if self.voice_available else False
+        try:
+            self.voice_enabled = enable
 
-        if self.voice_enabled:
-            message = "Voice recognition and text-to-speech are enabled."
-            audio_path = get_temp_audio_file()
-            self.text_to_speech.save_to_file(message, audio_path)
-            self.text_to_speech.speak(message)
-            return message, {"voice_enabled": True, "audio_response": audio_path}
-        else:
-            return "Voice recognition and text-to-speech are disabled.", {
-                "voice_enabled": False
-            }
+            if self.voice_enabled:
+                message = "Voice output is now enabled."
+                audio_path = get_temp_audio_file()
+                success = self.text_to_speech.save_to_file(message, audio_path)
+                if success:
+                    return message, {
+                        "voice_enabled": True,
+                        "audio_response": audio_path,
+                    }
+                else:
+                    self.voice_enabled = False
+                    logger.error("Failed to generate test audio, disabling voice")
+                    return (
+                        "Failed to enable voice output. Check your system settings.",
+                        {"voice_enabled": False},
+                    )
+            else:
+                return "Voice output is now disabled.", {"voice_enabled": False}
+        except Exception as e:
+            logger.error(f"Error toggling voice: {e}")
+            self.voice_enabled = False
+            return f"Error in voice system: {str(e)}", {"voice_enabled": False}
 
     async def _fetch_music_info(self, response: str, user_input: str) -> Dict[str, Any]:
         context = {}
