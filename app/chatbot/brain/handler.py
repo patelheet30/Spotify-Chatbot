@@ -576,7 +576,7 @@ class MusicInfoChatbot:
             return response, context
 
         elif (
-            cleaned_input == "WHICH ERA IS THIS ALBUM FROM"
+            self._clean_input(cleaned_input) == "WHICH ERA IS THIS ALBUM FROM"
             or "ALBUM ERA" in cleaned_input
             or "CLASSIFY THIS ALBUM" in cleaned_input
             or "CLASSIFY ALBUM" in cleaned_input
